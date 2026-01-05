@@ -1,0 +1,680 @@
+﻿// State
+let rawData = [];
+let workbook = null;
+let mainChartInstance = null;
+let pieChartInstance = null;
+let annualChartInstance = null;
+let compChartInstance = null;
+
+let globalClientColIdx = -1;
+let globalCNuevoIdx = -1;
+let globalMonthCols = []; // Stores { name: 'enero', index: 5, label: 'Enero' }
+
+// Elements
+const dropZone = document.getElementById('upload-section');
+const fileInput = document.getElementById('file-input');
+const columnMapper = document.getElementById('column-mapper');
+const dashboardView = document.getElementById('dashboard-view');
+const annualView = document.getElementById('annual-view');
+const historyModal = document.getElementById('history-modal');
+
+// Buttons
+const btnAnnual = document.getElementById('annual-btn');
+const btnHistory = document.getElementById('history-btn');
+const backFromAnnualSum = document.getElementById('back-from-annual-btn');
+const closeHistoryBtn = document.getElementById('close-history-btn');
+const searchActionBtn = document.getElementById('search-action-btn');
+
+// Reset Button
+const resetBtn = document.getElementById('reset-btn');
+if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+        // Return to upload/mapper state
+        dashboardView.classList.add('hidden');
+        annualView.classList.add('hidden');
+        comparisonView.classList.add('hidden');
+
+        if (workbook) {
+            columnMapper.classList.remove('hidden');
+        } else {
+            dropZone.classList.remove('hidden');
+            columnMapper.classList.add('hidden');
+        }
+    });
+}
+const backToHomeBtn = document.getElementById('back-to-home-btn');
+if (backToHomeBtn) {
+    backToHomeBtn.addEventListener('click', () => {
+        dashboardView.classList.add('hidden');
+        columnMapper.classList.remove('hidden');
+    });
+}
+
+
+// Drag & Drop Handlers
+dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const files = e.dataTransfer.files;
+    if (files.length) handleFile(files[0]);
+});
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length) handleFile(e.target.files[0]);
+});
+
+// Sheet Selector Listener (Global)
+document.getElementById('sheet-select').addEventListener('change', (e) => {
+    if (workbook) parseColumns(e.target.value);
+});
+
+// File Processing
+function handleFile(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const data = new Uint8Array(e.target.result);
+        workbook = XLSX.read(data, { type: 'array' });
+        populateSheetSelect();
+        showMapper();
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function populateSheetSelect() {
+    const select = document.getElementById('sheet-select');
+    select.innerHTML = '';
+
+    workbook.SheetNames.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.text = name;
+        select.appendChild(option);
+    });
+
+    if (workbook.SheetNames.length > 0) {
+        parseColumns(workbook.SheetNames[0]);
+    }
+}
+
+function parseColumns(sheetName) {
+    const worksheet = workbook.Sheets[sheetName];
+    rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+    if (rawData.length === 0) return;
+
+    const headers = rawData[0];
+    const filterSelect = document.getElementById('new-client-filter');
+    const amtSelect = document.getElementById('amount-col-select');
+
+    // Reset Globals
+    globalClientColIdx = -1;
+    globalCNuevoIdx = -1;
+    globalMonthCols = [];
+
+    // Clear Selects
+    filterSelect.innerHTML = '';
+    amtSelect.innerHTML = '';
+
+    // Month Definition
+    const monthNames = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+    headers.forEach((h, index) => {
+        const lower = String(h).toLowerCase().trim();
+
+        if (globalClientColIdx === -1 && (lower.includes('cliente') || lower.includes('razon') || lower.includes('social'))) {
+            globalClientColIdx = index;
+        }
+
+        if (globalCNuevoIdx === -1 && (lower === 'c nuevo')) {
+            globalCNuevoIdx = index;
+        }
+
+        if (monthNames.includes(lower)) {
+            // Add to dropdown
+            const option = document.createElement('option');
+            option.value = index;
+            option.text = h;
+            amtSelect.appendChild(option);
+
+            // Add to global month registry
+            globalMonthCols.push({
+                name: lower,
+                label: h,
+                index: index,
+                order: monthNames.indexOf(lower) // For sorting Jan-Dec
+            });
+        }
+    });
+
+    // Populate Filter
+    const uniqueCNuevo = new Set();
+    uniqueCNuevo.add('TODOS');
+    if (globalCNuevoIdx !== -1) {
+        for (let i = 1; i < rawData.length; i++) {
+            const val = rawData[i][globalCNuevoIdx];
+            if (val) uniqueCNuevo.add(val);
+        }
+    }
+    Array.from(uniqueCNuevo).forEach(val => {
+        const option = document.createElement('option');
+        option.value = val;
+        option.text = val;
+        filterSelect.appendChild(option);
+    });
+}
+
+function showMapper() {
+    dropZone.classList.add('hidden');
+    columnMapper.classList.remove('hidden');
+}
+
+// Generate Dashboard (Standard Single Month)
+document.getElementById('generate-btn').addEventListener('click', () => {
+    const sheetName = document.getElementById('sheet-select').value;
+    const filterVal = document.getElementById('new-client-filter').value;
+    const amtIdx = document.getElementById('amount-col-select').value;
+    const custIdx = globalClientColIdx;
+
+    const amountSelect = document.getElementById('amount-col-select');
+    const amountLabel = amountSelect.options[amountSelect.selectedIndex].text;
+    const titleEl = document.getElementById('chart-title');
+    if (titleEl) titleEl.innerHTML = `Top 10 Clientes <span class="text-blue-500">| ${amountLabel.toUpperCase()}</span>`;
+
+    processStandardData(sheetName, custIdx, amtIdx, filterVal);
+
+    columnMapper.classList.add('hidden');
+    dashboardView.classList.remove('hidden');
+});
+
+// --- STANDARD VIEW LOGIC ---
+function processStandardData(sheetName, custIdx, amtIdx, filterVal) {
+    const worksheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    const salesMap = {};
+    let grandTotal = 0;
+
+    for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        let customer = row[custIdx];
+        let amount = row[amtIdx];
+        let cNuevoVal = globalCNuevoIdx !== -1 ? row[globalCNuevoIdx] : null;
+
+        if (filterVal && filterVal !== 'TODOS') {
+            if (cNuevoVal !== filterVal) continue;
+        }
+        if (!customer) continue;
+
+        amount = parseAmount(amount);
+        if (amount) {
+            salesMap[customer] = (salesMap[customer] || 0) + amount;
+            grandTotal += amount;
+        }
+    }
+
+    const sortedData = Object.entries(salesMap)
+        .map(([name, total]) => ({ name, total }))
+        .sort((a, b) => b.total - a.total);
+
+    updateKPIs(sortedData, grandTotal);
+    renderCharts(sortedData);
+    renderTable(sortedData, grandTotal);
+}
+
+function updateKPIs(data, total) {
+    const formatter = new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' });
+    document.getElementById('kpi-total').innerText = formatter.format(total);
+    document.getElementById('kpi-count').innerText = data.length;
+    document.getElementById('kpi-top-client').innerText = data.length > 0 ? data[0].name : '-';
+}
+
+function renderCharts(data) {
+    const top10 = data.slice(0, 10);
+    const ctxMain = document.getElementById('mainChart').getContext('2d');
+    const ctxPie = document.getElementById('pieChart').getContext('2d');
+
+    if (mainChartInstance) mainChartInstance.destroy();
+    if (pieChartInstance) pieChartInstance.destroy();
+
+    mainChartInstance = new Chart(ctxMain, {
+        type: 'bar',
+        data: {
+            labels: top10.map(d => d.name.substring(0, 15) + '...'),
+            datasets: [{
+                label: 'Ventas (S/)',
+                data: top10.map(d => d.total),
+                backgroundColor: '#3b82f6',
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }, tooltip: {
+                    callbacks: { label: (c) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(c.raw) }
+                }
+            },
+            scales: {
+                y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+                x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+            }
+        }
+    });
+
+    const top5 = data.slice(0, 5);
+    const othersTotal = data.slice(5).reduce((acc, curr) => acc + curr.total, 0);
+    const pieData = [...top5, { name: 'Otros', total: othersTotal }];
+
+    pieChartInstance = new Chart(ctxPie, {
+        type: 'doughnut',
+        data: {
+            labels: pieData.map(d => d.name),
+            datasets: [{
+                data: pieData.map(d => d.total),
+                backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false, cutout: '70%',
+            plugins: { legend: { position: 'right', labels: { color: '#cbd5e1', font: { size: 10 }, boxWidth: 10 } } }
+        }
+    });
+}
+
+function renderTable(data, total) {
+    const tbody = document.getElementById('table-body');
+    const formatter = new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' });
+
+    tbody.innerHTML = data.map((d, index) => `
+        <tr class="hover:bg-slate-800 transition-colors">
+            <td class="px-6 py-4 font-medium text-slate-400">#${index + 1}</td>
+            <td class="px-6 py-4 text-white">${d.name}</td>
+            <td class="px-6 py-4 text-right font-medium text-emerald-400">${formatter.format(d.total)}</td>
+            <td class="px-6 py-4 text-right text-slate-500">${total > 0 ? ((d.total / total) * 100).toFixed(2) : 0}%</td>
+        </tr>
+    `).join('');
+
+    // Search
+    const searchInput = document.getElementById('search-table');
+    if (searchInput) {
+        searchInput.addEventListener('keyup', (e) => {
+            const term = e.target.value.toLowerCase();
+            tbody.querySelectorAll('tr').forEach(row => {
+                const text = row.querySelector('td:nth-child(2)').innerText.toLowerCase();
+                row.style.display = text.includes(term) ? '' : 'none';
+            });
+        });
+    }
+}
+
+// --- ANNUAL VIEW LOGIC ---
+
+if (btnAnnual) {
+    btnAnnual.addEventListener('click', () => {
+        columnMapper.classList.add('hidden'); // Hide the mapper
+        annualView.classList.remove('hidden');
+        processAnnualData();
+    });
+}
+
+if (backFromAnnualSum) {
+    backFromAnnualSum.addEventListener('click', () => {
+        annualView.classList.add('hidden');
+        columnMapper.classList.remove('hidden'); // Return to mapper
+    });
+}
+
+function processAnnualData() {
+    if (!workbook) return;
+    const sheetName = document.getElementById('sheet-select').value;
+    const worksheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+    const clientTotals = {}; // name -> total
+    const monthlyTotals = new Array(12).fill(0); // Index 0=Jan, 11=Dec
+    let grandAnnualTotal = 0;
+
+    // Filter Logic
+    const filterVal = document.getElementById('new-client-filter').value;
+
+    // Sort month columns to ensure Jan -> Dec order
+    globalMonthCols.sort((a, b) => a.order - b.order);
+
+    for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        const cust = row[globalClientColIdx];
+        if (!cust) continue;
+
+        let cNuevoVal = globalCNuevoIdx !== -1 ? row[globalCNuevoIdx] : null;
+        if (filterVal && filterVal !== 'TODOS' && cNuevoVal !== filterVal) continue;
+
+        let clientSum = 0;
+        let activeMonths = 0;
+
+        globalMonthCols.forEach((mCol) => {
+            const val = parseAmount(row[mCol.index]);
+            if (val > 0) {
+                clientSum += val;
+                monthlyTotals[mCol.order] += val;
+                grandAnnualTotal += val;
+                activeMonths++;
+            }
+        });
+
+        if (clientSum > 0) {
+            clientTotals[cust] = { name: cust, total: clientSum, activeMonths };
+        }
+    }
+
+    // Convert to rankings
+    const ranking = Object.values(clientTotals).sort((a, b) => b.total - a.total);
+
+    // Update KPIs
+    const formatter = new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' });
+    document.getElementById('annual-total-kpi').innerText = formatter.format(grandAnnualTotal);
+    document.getElementById('annual-top-client').innerText = ranking.length > 0 ? ranking[0].name : '-';
+
+    // Render Table
+    const tbody = document.getElementById('annual-table-body');
+    tbody.innerHTML = ranking.map((d, index) => `
+        <tr class="hover:bg-slate-800 transition-colors">
+            <td class="px-6 py-4 font-medium text-slate-400">#${index + 1}</td>
+            <td class="px-6 py-4 text-white">${d.name}</td>
+            <td class="px-6 py-4 text-right font-medium text-emerald-400">${formatter.format(d.total)}</td>
+            <td class="px-6 py-4 text-center text-slate-400">${d.activeMonths} / 12</td>
+        </tr>
+    `).join('');
+
+    // Render Trend Chart
+    const ctx = document.getElementById('annualTrendChart').getContext('2d');
+    if (annualChartInstance) annualChartInstance.destroy();
+
+    const monthLabels = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+    annualChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: monthLabels,
+            datasets: [{
+                label: 'Venta Total Mensual',
+                data: monthlyTotals,
+                borderColor: '#10b981', // Emerald
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: '#fff',
+                pointBorderColor: '#10b981',
+                pointRadius: 4
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: (c) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(c.raw) } }
+            },
+            scales: {
+                y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+                x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+            }
+        }
+    });
+}
+
+// --- HISTORY LOGIC ---
+
+if (btnHistory) {
+    btnHistory.addEventListener('click', () => {
+        historyModal.classList.remove('hidden');
+        populateClientDatalist();
+    });
+}
+
+if (closeHistoryBtn) {
+    closeHistoryBtn.addEventListener('click', () => {
+        historyModal.classList.add('hidden');
+        document.getElementById('history-content').classList.add('hidden');
+        document.getElementById('client-search-input').value = '';
+    });
+}
+
+function populateClientDatalist() {
+    if (!workbook) return; // Should be loaded
+    const datalist = document.getElementById('client-datalist');
+    datalist.innerHTML = '';
+    // Collect all clients
+    const sheetName = document.getElementById('sheet-select').value;
+    const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 });
+
+    const clients = new Set();
+    for (let i = 1; i < data.length; i++) {
+        if (data[i][globalClientColIdx]) clients.add(data[i][globalClientColIdx]);
+    }
+
+    // Sort A-Z
+    Array.from(clients).sort().forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        datalist.appendChild(opt);
+    });
+}
+
+if (searchActionBtn) {
+    searchActionBtn.addEventListener('click', () => {
+        const val = document.getElementById('client-search-input').value;
+        if (val) searchClientHistory(val);
+    });
+}
+
+// Also Enter key
+document.getElementById('client-search-input').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') searchActionBtn.click();
+});
+
+function searchClientHistory(clientName) {
+    const sheetName = document.getElementById('sheet-select').value;
+    const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 });
+
+    const row = data.find(r => r[globalClientColIdx] === clientName);
+
+    if (!row) {
+        alert('Cliente no encontrado');
+        return;
+    }
+
+    document.getElementById('history-content').classList.remove('hidden');
+    document.getElementById('hist-client-name').innerText = clientName;
+
+    // Build row data
+    const tbody = document.getElementById('hist-table-body');
+    let totalAnn = 0;
+    const monthLabels = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+    // Sort columns by order
+    globalMonthCols.sort((a, b) => a.order - b.order);
+
+    let html = '';
+    const formatter = new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' });
+
+    // We iterate 0..11 for Jan..Dec
+    // If we have a column for that month, use it. If not, 0.
+    for (let i = 0; i < 12; i++) {
+        const colDef = globalMonthCols.find(c => c.order === i);
+        let val = 0;
+        if (colDef) {
+            val = parseAmount(row[colDef.index]);
+        }
+        totalAnn += val;
+
+        const style = val > 0 ? "text-emerald-400 font-bold" : "text-slate-500";
+        const status = val > 0 ? "? Compra" : "? Sin Movimiento";
+
+        html += `
+            <tr class="hover:bg-slate-800/50 transition-colors border-b border-slate-800 last:border-0">
+                <td class="px-6 py-3 font-medium text-slate-300">${monthLabels[i]}</td>
+                <td class="px-6 py-3 text-right ${style}">${formatter.format(val)}</td>
+                <td class="px-6 py-3 text-right text-xs text-slate-400">${status}</td>
+            </tr>
+        `;
+    }
+
+    tbody.innerHTML = html;
+    document.getElementById('hist-client-total').innerText = formatter.format(totalAnn);
+}
+
+// Utils
+function parseAmount(val) {
+    if (!val) return 0;
+    if (typeof val === 'number') return val;
+    if (typeof val === 'string') return parseFloat(val.replace(/[^0-9.-]+/g, "")) || 0;
+    return 0;
+}
+
+// --- Comparison (Keep existing) ---
+const compareBtn = document.getElementById('compare-btn');
+const comparisonModal = document.getElementById('comparison-modal');
+const closeModalBtn = document.getElementById('close-modal-btn');
+const runComparisonBtn = document.getElementById('run-comparison-btn');
+const comparisonView = document.getElementById('comparison-view');
+const backToDashBtn = document.getElementById('back-to-dash-btn');
+
+compareBtn.addEventListener('click', () => {
+    comparisonModal.classList.remove('hidden');
+    populateComparisonSelects();
+});
+
+closeModalBtn.addEventListener('click', () => comparisonModal.classList.add('hidden'));
+
+backToDashBtn.addEventListener('click', () => {
+    comparisonView.classList.add('hidden');
+    columnMapper.classList.remove('hidden'); // Return to Mapper
+});
+
+function populateComparisonSelects() {
+    // Reuse globalMonthCols
+    const selA = document.getElementById('comp-month-a');
+    const selB = document.getElementById('comp-month-b');
+    selA.innerHTML = '';
+    selB.innerHTML = '';
+
+    globalMonthCols.sort((a, b) => a.order - b.order).forEach(m => {
+        const optA = document.createElement('option');
+        optA.value = m.index;
+        optA.text = m.label;
+        selA.appendChild(optA);
+
+        const optB = document.createElement('option');
+        optB.value = m.index;
+        optB.text = m.label;
+        selB.appendChild(optB.cloneNode(true));
+    });
+}
+
+runComparisonBtn.addEventListener('click', () => {
+    const idxA = document.getElementById('comp-month-a').value;
+    const idxB = document.getElementById('comp-month-b').value;
+    const nameA = document.getElementById('comp-month-a').options[document.getElementById('comp-month-a').selectedIndex].text;
+    const nameB = document.getElementById('comp-month-b').options[document.getElementById('comp-month-b').selectedIndex].text;
+
+    comparisonModal.classList.add('hidden');
+    columnMapper.classList.add('hidden'); // Hide mapper
+    comparisonView.classList.remove('hidden');
+
+    document.getElementById('comp-label-a').innerText = nameA;
+    document.getElementById('comp-label-b').innerText = nameB;
+
+    processComparison(idxA, idxB, globalClientColIdx);
+});
+
+function processComparison(idxA, idxB, custIdx) {
+    const sheetName = document.getElementById('sheet-select').value;
+    const worksheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+    let totalA = 0;
+    let totalB = 0;
+    const churnList = [];
+    const comparisonData = [];
+
+    // Filter
+    const filterVal = document.getElementById('new-client-filter').value;
+
+    for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        const cust = row[custIdx];
+        if (!cust) continue;
+
+        let cNuevoVal = globalCNuevoIdx !== -1 ? row[globalCNuevoIdx] : null;
+        if (filterVal && filterVal !== 'TODOS' && cNuevoVal !== filterVal) continue;
+
+        const valA = parseAmount(row[idxA]);
+        const valB = parseAmount(row[idxB]);
+        totalA += valA;
+        totalB += valB;
+
+        comparisonData.push({ name: cust, valA, valB });
+        if (valA > 0 && valB <= 0) {
+            churnList.push({ name: cust, valA, valB, diff: valA });
+        }
+    }
+
+    const formatter = new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' });
+    document.getElementById('comp-total-a').innerText = formatter.format(totalA);
+    document.getElementById('comp-total-b').innerText = formatter.format(totalB);
+
+    const diff = totalB - totalA;
+    const perc = totalA > 0 ? (diff / totalA) * 100 : 0;
+    document.getElementById('comp-diff-val').innerText = (diff >= 0 ? '+' : '') + formatter.format(diff);
+    document.getElementById('comp-diff-perc').innerText = `${perc.toFixed(2)}%`;
+    const diffCard = document.getElementById('diff-card');
+    if (diff >= 0) diffCard.classList.replace('border-red-500', 'border-emerald-500') || diffCard.classList.add('border-emerald-500');
+    else diffCard.classList.replace('border-emerald-500', 'border-red-500') || diffCard.classList.add('border-red-500');
+
+    churnList.sort((a, b) => b.valA - a.valA);
+    renderChurnTable(churnList);
+
+    comparisonData.sort((a, b) => b.valA - a.valA);
+    renderComparisonChart(comparisonData.slice(0, 10), document.getElementById('comp-label-a').innerText, document.getElementById('comp-label-b').innerText);
+}
+
+function renderChurnTable(list) {
+    const tbody = document.getElementById('churn-table-body');
+    const formatter = new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' });
+    if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-8 text-center text-slate-500">¡Genial! No hay clientes perdidos.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = list.map(d => `
+        <tr class="hover:bg-slate-800/50 transition-colors border-b border-slate-800 last:border-0">
+            <td class="px-6 py-3 font-medium text-white">${d.name}</td>
+            <td class="px-6 py-3 text-right text-slate-300">${formatter.format(d.valA)}</td>
+            <td class="px-6 py-3 text-right text-red-400 font-bold">S/ 0.00</td>
+            <td class="px-6 py-3 text-right text-red-400">-${formatter.format(d.diff)}</td>
+        </tr>
+    `).join('');
+}
+
+function renderComparisonChart(data, labelA, labelB) {
+    const ctx = document.getElementById('compChart').getContext('2d');
+    if (compChartInstance) compChartInstance.destroy();
+    compChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.name.substring(0, 15)),
+            datasets: [
+                { label: labelA, data: data.map(d => d.valA), backgroundColor: '#64748b', borderRadius: 4 },
+                { label: labelB, data: data.map(d => d.valB), backgroundColor: '#3b82f6', borderRadius: 4 }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#cbd5e1' } } },
+            scales: { y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }, x: { grid: { display: false }, ticks: { color: '#94a3b8' } } }
+        }
+    });
+}

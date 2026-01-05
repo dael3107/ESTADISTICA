@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Tendencias Rediplast</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body class="min-h-screen p-8">
+
+    <div class="max-w-7xl mx-auto space-y-8">
+
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-3xl font-bold text-white tracking-tight">Tendencias de Venta <span
+                        class="text-blue-500">REDIPLAST 2025</span></h1>
+                <p class="text-slate-400 mt-1">Análisis interactivo de clientes</p>
+            </div>
+            <div class="flex gap-3">
+                <button id="reset-btn"
+                    class="text-sm text-slate-300 bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-full border border-slate-700 transition-colors cursor-pointer flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
+                    </svg>
+                    Reiniciar
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Input Area -->
+        <div id="upload-section" class="glass-panel rounded-2xl p-10 text-center drop-zone cursor-pointer">
+            <div class="pointer-events-none">
+                <svg class="w-16 h-16 mx-auto text-blue-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12">
+                    </path>
+                </svg>
+                <h2 class="text-xl font-semibold text-white mb-2">Arrastra tu archivo Excel aquí</h2>
+                <p class="text-slate-400">Soporta formatos .xlsx y .xls</p>
+            </div>
+            <input type="file" id="file-input" class="hidden" accept=".xlsx, .xls">
+        </div>
+
+        <!-- Configuration Wrapper (Hidden initially) -->
+        <div id="column-mapper" class="space-y-6 hidden">
+
+            <!-- PANEL 1: TENDENCIAS (Full Width) -->
+            <div class="glass-panel rounded-2xl p-6">
+                <div class="flex items-center gap-3 mb-6 border-b border-slate-700 pb-2">
+                    <span class="text-2xl">📈</span>
+                    <h3 class="text-lg font-semibold text-white">Tendencias de Venta</h3>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-300 mb-2">Hoja de Tendencia</label>
+                        <select id="sheet-trend"
+                            class="w-full bg-slate-800 border-slate-600 rounded-lg text-white p-2.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-300 mb-2">Filtro Clientes Nuevos</label>
+                        <select id="new-client-filter"
+                            class="w-full bg-slate-800 border-slate-600 rounded-lg text-white p-2.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-300 mb-2">Mes (Dashboard)</label>
+                        <select id="amount-col-select"
+                            class="w-full bg-slate-800 border-slate-600 rounded-lg text-white p-2.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    </div>
+                </div>
+
+                <!-- Action Buttons Area -->
+                <div
+                    class="flex flex-col md:flex-row flex-wrap gap-4 justify-between items-center border-t border-slate-700 pt-6">
+                    <!-- Standard Features -->
+                    <div class="flex gap-3 flex-wrap justify-center">
+                        <button id="annual-btn"
+                            class="text-sm font-semibold text-emerald-300 bg-emerald-900/40 hover:bg-emerald-900/60 px-4 py-2 rounded-full border border-emerald-800 transition-all cursor-pointer flex items-center gap-2">
+                            <span>📅</span> Venta Anual
+                        </button>
+                        <button id="history-btn"
+                            class="text-sm font-semibold text-purple-300 bg-purple-900/40 hover:bg-purple-900/60 px-4 py-2 rounded-full border border-purple-800 transition-all cursor-pointer flex items-center gap-2">
+                            <span>👤</span> Historial
+                        </button>
+                        <button id="compare-btn"
+                            class="text-sm font-semibold text-blue-300 bg-blue-900/40 hover:bg-blue-900/60 px-4 py-2 rounded-full border border-blue-800 transition-all cursor-pointer flex items-center gap-2">
+                            <span>⚖️</span> Comparar
+                        </button>
+                    </div>
+
+                    <!-- Extra Features -->
+                    <div class="flex gap-3 flex-wrap justify-center">
+                        <button id="no-sales-btn"
+                            class="text-sm font-semibold text-red-300 bg-red-900/40 hover:bg-red-900/60 px-4 py-2 rounded-full border border-red-800 transition-all cursor-pointer flex items-center gap-2">
+                            <span>🚫</span> Sin Venta
+                        </button>
+                        <button id="new-clients-btn"
+                            class="text-sm font-semibold text-yellow-300 bg-yellow-900/40 hover:bg-yellow-900/60 px-4 py-2 rounded-full border border-yellow-800 transition-all cursor-pointer flex items-center gap-2">
+                            <span>⭐</span> Nuevos
+                        </button>
+                    </div>
+
+                    <!-- Main Button -->
+                    <button id="generate-btn"
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-lg shadow-blue-500/30">
+                        Generar Dashboard
+                    </button>
+                </div>
+            </div>
+
+            <!-- LOWER PANELS GRID -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+                <!-- PANEL 2: COMPARATIVO -->
+                <div class="glass-panel rounded-2xl p-6 flex flex-col">
+                    <div class="flex items-center gap-2 mb-4 border-b border-slate-700 pb-2">
+                        <span class="text-xl">📊</span>
+                        <h3 class="text-base font-semibold text-white">Reportes Comparativos</h3>
+                    </div>
+                    <div class="mb-4 flex-1">
+                        <label class="block text-xs font-medium text-slate-400 mb-2">Seleccionar Hoja</label>
+                        <select id="sheet-comp"
+                            class="w-full bg-slate-800 border-slate-600 rounded-lg text-white p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    </div>
+                    <div class="mt-auto pt-4 border-t border-slate-700 text-center">
+                        <button id="btn-open-comp-report"
+                            class="w-full text-sm font-bold text-teal-300 bg-teal-900/30 hover:bg-teal-900/50 py-2 rounded-lg border border-teal-800 transition-colors">
+                            Ver Comparativo Anual
+                        </button>
+                    </div>
+                </div>
+
+                <!-- PANEL 3: VENDEDORES -->
+                <div class="glass-panel rounded-2xl p-6 flex flex-col">
+                    <div class="flex items-center gap-2 mb-4 border-b border-slate-700 pb-2">
+                        <span class="text-xl">💼</span>
+                        <h3 class="text-base font-semibold text-white">Gestión de Vendedores</h3>
+                    </div>
+                    <div class="mb-4 flex-1">
+                        <label class="block text-xs font-medium text-slate-400 mb-2">Seleccionar Hoja</label>
+                        <select id="sheet-seller"
+                            class="w-full bg-slate-800 border-slate-600 rounded-lg text-white p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    </div>
+                    <div class="mt-auto pt-4 border-t border-slate-700 text-center">
+                        <button id="btn-open-seller-report"
+                            class="w-full text-sm font-bold text-orange-300 bg-orange-900/30 hover:bg-orange-900/50 py-2 rounded-lg border border-orange-800 transition-colors">
+                            Ver Gestión Vendedores
+                        </button>
+                    </div>
+                </div>
+
+                <!-- PANEL 4: PRODUCTOS -->
+                <div class="glass-panel rounded-2xl p-6 flex flex-col">
+                    <div class="flex items-center gap-2 mb-4 border-b border-slate-700 pb-2">
+                        <span class="text-xl">📦</span>
+                        <h3 class="text-base font-semibold text-white">Análisis de Productos</h3>
+                    </div>
+                    <div class="mb-4 flex-1">
+                        <label class="block text-xs font-medium text-slate-400 mb-2">Seleccionar Hoja</label>
+                        <select id="sheet-product"
+                            class="w-full bg-slate-800 border-slate-600 rounded-lg text-white p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    </div>
+                    <div class="mt-auto pt-4 border-t border-slate-700 text-center">
+                        <button id="btn-open-product-report"
+                            class="w-full text-sm font-bold text-pink-300 bg-pink-900/30 hover:bg-pink-900/50 py-2 rounded-lg border border-pink-800 transition-colors">
+                            Ver Análisis Productos
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Dashboard Content (Hidden initially) -->
+        <div id="dashboard-view" class="space-y-8 hidden">
+            <!-- Header for view -->
+            <div class="flex items-center gap-4 border-b border-slate-700 pb-4">
+                <button id="back-to-home-btn"
+                    class="p-2 rounded-full bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                    </svg>
+                </button>
+                <h2 class="text-2xl font-bold text-white">Dashboard Mensual</h2>
+            </div>
+
+            <!-- KPIs -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-emerald-500">
+                    <p class="text-slate-400 text-sm">Venta Total Analizada</p>
+                    <p class="text-3xl font-bold text-white mt-1" id="kpi-total">S/ 0.00</p>
+                </div>
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-blue-500">
+                    <p class="text-slate-400 text-sm">Mejor Cliente</p>
+                    <p class="text-xl font-bold text-white mt-1 truncate" id="kpi-top-client">-</p>
+                </div>
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-purple-500">
+                    <p class="text-slate-400 text-sm">Total Clientes</p>
+                    <p class="text-3xl font-bold text-white mt-1" id="kpi-count">0</p>
+                </div>
+            </div>
+
+            <!-- Charts -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Main Chart -->
+                <div class="glass-panel p-6 rounded-2xl lg:col-span-2">
+                    <h3 id="chart-title" class="text-lg font-semibold text-white mb-4">Top 10 Clientes</h3>
+                    <div class="relative h-80 w-full">
+                        <canvas id="mainChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Distribution Chart -->
+                <div class="glass-panel p-6 rounded-2xl">
+                    <h3 class="text-lg font-semibold text-white mb-4">Distribución</h3>
+                    <div class="relative h-64 w-full flex justify-center">
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Table -->
+            <div class="glass-panel rounded-2xl overflow-hidden">
+                <div class="p-6 border-b border-slate-700 flex justify-between items-center">
+                    <h3 class="text-lg font-semibold text-white">Detalle Completo</h3>
+                    <input type="text" id="search-table" placeholder="Buscar cliente..."
+                        class="bg-slate-900 border border-slate-600 rounded-lg px-4 py-1 text-sm text-white focus:outline-none focus:border-blue-500">
+                </div>
+                <div class="overflow-x-auto max-h-96">
+                    <table class="w-full text-left text-sm text-slate-300">
+                        <thead class="bg-slate-800 text-xs uppercase text-slate-400 sticky top-0">
+                            <tr>
+                                <th class="px-6 py-3">Ranking</th>
+                                <th class="px-6 py-3">Cliente</th>
+                                <th class="px-6 py-3 text-right">Monto Total</th>
+                                <th class="px-6 py-3 text-right">% del Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body" class="divide-y divide-slate-700">
+                            <!-- Rows injected here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Comparison Modal (Standard) -->
+        <div id="comparison-modal"
+            class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center z-50">
+            <div class="glass-panel p-8 rounded-2xl w-full max-w-lg mx-4 border border-slate-700 shadow-2xl">
+                <h3 class="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                    <span>⚖️</span> Comparar Periodos (Tendencia)
+                </h3>
+
+                <div class="space-y-6">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-300 mb-2">Mes Base (Referencia)</label>
+                        <select id="comp-month-a"
+                            class="w-full bg-slate-800 border-slate-600 rounded-lg text-white p-3 focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    </div>
+
+                    <div class="flex justify-center text-slate-500">
+                        <svg class="w-6 h-6 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
+                        </svg>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-300 mb-2">Mes a Comparar (Actual)</label>
+                        <select id="comp-month-b"
+                            class="w-full bg-slate-800 border-slate-600 rounded-lg text-white p-3 focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    </div>
+                </div>
+
+                <div class="flex gap-4 mt-8">
+                    <button id="close-modal-btn"
+                        class="flex-1 py-3 rounded-xl border border-slate-600 text-slate-300 hover:bg-slate-800 transition-colors">Cancelar</button>
+                    <button id="run-comparison-btn"
+                        class="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30">
+                        Ver Resultados
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comparison View (Standard) -->
+        <div id="comparison-view" class="space-y-8 hidden">
+            <!-- Header -->
+            <div class="flex items-center gap-4 border-b border-slate-700 pb-4">
+                <button id="back-to-dash-btn"
+                    class="p-2 rounded-full bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                    </svg>
+                </button>
+                <h2 class="text-2xl font-bold text-white">Resultados de Comparación</h2>
+            </div>
+
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-slate-500">
+                    <p class="text-slate-400 text-sm truncate" id="comp-label-a">Mes Base</p>
+                    <p class="text-2xl font-bold text-white mt-1" id="comp-total-a">S/ 0.00</p>
+                </div>
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-blue-500">
+                    <p class="text-slate-400 text-sm truncate" id="comp-label-b">Mes Actual</p>
+                    <p class="text-2xl font-bold text-white mt-1" id="comp-total-b">S/ 0.00</p>
+                </div>
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-green-500" id="diff-card">
+                    <p class="text-slate-400 text-sm">Diferencia Neta</p>
+                    <div class="flex items-end gap-2">
+                        <p class="text-2xl font-bold text-white mt-1" id="comp-diff-val">S/ 0.00</p>
+                        <span class="text-sm font-medium mb-1 px-2 py-0.5 rounded bg-slate-800"
+                            id="comp-diff-perc">0%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="glass-panel p-6 rounded-2xl">
+                <h3 class="text-lg font-semibold text-white mb-4">Comparativa Top 10 Clientes (Base vs Actual)</h3>
+                <div class="relative h-80 w-full">
+                    <canvas id="compChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Churn Table -->
+            <div class="glass-panel rounded-2xl overflow-hidden border border-red-900/30">
+                <div class="p-6 border-b border-slate-700 bg-red-900/10">
+                    <h3 class="text-lg font-semibold text-red-400 flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z">
+                            </path>
+                        </svg>
+                        CLIENTES QUE DEJARON DE COMPRAR
+                    </h3>
+                    <p class="text-slate-400 text-sm mt-1">Clientes que compraron en el <b>Mes Base</b> pero registraron
+                        0 ventas en el <b>Mes Actual</b>.</p>
+                </div>
+                <div class="overflow-x-auto max-h-96">
+                    <table class="w-full text-left text-sm text-slate-300">
+                        <thead class="bg-slate-800 text-xs uppercase text-slate-400 sticky top-0">
+                            <tr>
+                                <th class="px-6 py-3">Cliente</th>
+                                <th class="px-6 py-3 text-right">Venta Base</th>
+                                <th class="px-6 py-3 text-right">Venta Actual</th>
+                                <th class="px-6 py-3 text-right">Dejó de Comprar</th>
+                            </tr>
+                        </thead>
+                        <tbody id="churn-table-body" class="divide-y divide-slate-700">
+                            <!-- Rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Annual View (Standard) -->
+        <div id="annual-view" class="space-y-8 hidden">
+            <!-- Header -->
+            <div class="flex items-center gap-4 border-b border-slate-700 pb-4">
+                <button id="back-from-annual-btn"
+                    class="p-2 rounded-full bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                    </svg>
+                </button>
+                <h2 class="text-2xl font-bold text-white">Venta Total del Año 2025</h2>
+            </div>
+
+            <!-- Overall Stats -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-emerald-500">
+                    <p class="text-slate-400 text-sm">Venta Total Anual (Todos los Clientes)</p>
+                    <p class="text-3xl font-bold text-white mt-1" id="annual-total-kpi">S/ 0.00</p>
+                </div>
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-blue-500">
+                    <p class="text-slate-400 text-sm">Mejor Cliente del Año</p>
+                    <p class="text-xl font-bold text-white mt-1 truncate" id="annual-top-client">-</p>
+                </div>
+            </div>
+
+            <!-- Trend Chart -->
+            <div class="glass-panel p-6 rounded-2xl">
+                <h3 class="text-lg font-semibold text-white mb-4">Tendencia de Venta (Ene - Dic)</h3>
+                <div class="relative h-80 w-full">
+                    <canvas id="annualTrendChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Annual Table -->
+            <div class="glass-panel rounded-2xl overflow-hidden">
+                <div class="p-6 border-b border-slate-700">
+                    <h3 class="text-lg font-semibold text-white">Ranking de Clientes (Acumulado Anual)</h3>
+                </div>
+                <div class="overflow-x-auto max-h-96">
+                    <table class="w-full text-left text-sm text-slate-300">
+                        <thead class="bg-slate-800 text-xs uppercase text-slate-400 sticky top-0">
+                            <tr>
+                                <th class="px-6 py-3">Ranking</th>
+                                <th class="px-6 py-3">Cliente</th>
+                                <th class="px-6 py-3 text-right">Total Año</th>
+                                <th class="px-6 py-3 text-center">Meses Activo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="annual-table-body" class="divide-y divide-slate-700">
+                            <!-- Rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Client History Modal -->
+        <div id="history-modal"
+            class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center z-50">
+            <div
+                class="glass-panel p-8 rounded-2xl w-full max-w-4xl mx-4 border border-slate-700 shadow-2xl max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-bold text-white flex items-center gap-2">
+                        <span>👤</span> Historial de Cliente
+                    </h3>
+                    <button id="close-history-btn" class="text-slate-400 hover:text-white">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Search -->
+                <div class="mb-8">
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Buscar Cliente</label>
+                    <div class="relative">
+                        <input type="text" id="client-search-input" list="client-datalist"
+                            class="w-full bg-slate-800 border-slate-600 rounded-lg text-white p-3 pl-4 focus:ring-2 focus:ring-purple-500 outline-none"
+                            placeholder="Escribe el nombre del cliente...">
+                        <datalist id="client-datalist"></datalist>
+                        <button id="search-action-btn"
+                            class="absolute right-2 top-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-1 rounded-md transition-colors">
+                            Buscar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- History Content -->
+                <div id="history-content" class="hidden space-y-6">
+                    <div class="flex justify-between items-end border-b border-slate-700 pb-4">
+                        <div>
+                            <p class="text-slate-400 text-sm">Cliente</p>
+                            <h2 class="text-2xl font-bold text-white" id="hist-client-name">-</h2>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-slate-400 text-sm">Total Comprado (Año)</p>
+                            <p class="text-2xl font-bold text-emerald-400" id="hist-client-total">S/ 0.00</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel overflow-hidden rounded-xl border border-slate-700">
+                        <table class="w-full text-left text-sm text-slate-300">
+                            <thead class="bg-slate-800 text-xs uppercase text-slate-400">
+                                <tr>
+                                    <th class="px-6 py-3">Mes</th>
+                                    <th class="px-6 py-3 text-right">Monto Compra</th>
+                                    <th class="px-6 py-3 text-right">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hist-table-body" class="divide-y divide-slate-700">
+                                <!-- Months -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- No Sales Modal -->
+        <div id="no-sales-modal"
+            class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center z-50">
+            <div
+                class="glass-panel p-8 rounded-2xl w-full max-w-4xl mx-4 border border-red-900/50 shadow-2xl max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-bold text-red-400 flex items-center gap-2">
+                        <span>🚫</span> Clientes Sin Venta
+                    </h3>
+                    <button id="close-no-sales-btn" class="text-slate-400 hover:text-white">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm text-slate-300">
+                        <thead class="bg-slate-800 text-xs uppercase text-slate-400">
+                            <tr>
+                                <th class="px-6 py-3">Cliente</th>
+                                <th class="px-6 py-3">Vendedor</th>
+                                <th class="px-6 py-3 text-right">Estatus</th>
+                            </tr>
+                        </thead>
+                        <tbody id="no-sales-body" class="divide-y divide-slate-700">
+                            <!-- Rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- New Clients Modal -->
+        <div id="new-clients-modal"
+            class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center z-50">
+            <div
+                class="glass-panel p-8 rounded-2xl w-full max-w-6xl mx-4 border border-yellow-900/50 shadow-2xl max-h-[95vh] overflow-y-auto">
+
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-bold text-yellow-500 flex items-center gap-2">
+                        <span>⭐</span> Reporte de Nuevos Clientes
+                    </h3>
+                    <div class="flex gap-4">
+                        <button id="back-sellers-btn"
+                            class="hidden text-sm text-blue-400 hover:text-blue-300 underline">← Volver a
+                            Vendedores</button>
+                        <button id="close-new-clients-btn" class="text-slate-400 hover:text-white">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- View 1: Sellers Grid -->
+                <div id="nc-sellers-view">
+                    <p class="text-slate-400 mb-4 text-center">Selecciona un vendedor para ver sus clientes nuevos
+                        detallados.</p>
+                    <div id="nc-sellers-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        <!-- Buttons injected here -->
+                    </div>
+                </div>
+
+                <!-- View 2: Detailed Table -->
+                <div id="nc-detail-view" class="hidden">
+                    <div class="mb-4">
+                        <h4 class="text-lg font-semibold text-white">Vendedor: <span id="nc-seller-name"
+                                class="text-blue-400"></span></h4>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs text-slate-300 whitespace-nowrap">
+                            <thead class="bg-slate-800 text-slate-400">
+                                <tr id="nc-table-header">
+                                    <!-- Dynamic Headers -->
+                                </tr>
+                            </thead>
+                            <tbody id="nc-table-body" class="divide-y divide-slate-700">
+                                <!-- Rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- --- NEW MODALS FOR ADVANCED REPORTS --- -->
+
+        <!-- 1. Modal Reporte Comparativo (Anual) -->
+        <div id="modal-comp-report"
+            class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center z-50">
+            <div
+                class="glass-panel p-8 rounded-2xl w-full max-w-5xl mx-4 border border-teal-900/50 shadow-2xl max-h-[95vh] overflow-y-auto">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-bold text-teal-400 flex items-center gap-2">
+                        <span>📊</span> Reporte Comparativo Anual
+                    </h3>
+                    <button id="close-comp-report-btn" class="text-slate-400 hover:text-white">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Summary Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div class="glass-panel p-6 rounded-2xl border-l-4 border-slate-500">
+                        <p class="text-slate-400 text-sm">Total Año Anterior</p>
+                        <p class="text-2xl font-bold text-white mt-1" id="cr-total-prev">S/ 0.00</p>
+                    </div>
+                    <div class="glass-panel p-6 rounded-2xl border-l-4 border-teal-500">
+                        <p class="text-slate-400 text-sm">Total Año Actual</p>
+                        <p class="text-2xl font-bold text-white mt-1" id="cr-total-curr">S/ 0.00</p>
+                    </div>
+                    <div class="glass-panel p-6 rounded-2xl border-l-4 border-blue-500">
+                        <p class="text-slate-400 text-sm">Crecimiento Anual</p>
+                        <p class="text-2xl font-bold text-white mt-1" id="cr-growth">0%</p>
+                    </div>
+                </div>
+
+                <!-- Chart -->
+                <div class="glass-panel p-6 rounded-2xl mb-8">
+                    <h3 class="text-lg font-semibold text-white mb-4">Evolución Mensual (Año vs Año)</h3>
+                    <div class="relative h-80 w-full">
+                        <canvas id="compReportChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Table -->
+                <div class="glass-panel rounded-2xl overflow-hidden">
+                    <table class="w-full text-left text-sm text-slate-300">
+                        <thead class="bg-slate-800 text-xs uppercase text-slate-400">
+                            <tr>
+                                <th class="px-6 py-3">Mes</th>
+                                <th class="px-6 py-3 text-right">Año Anterior</th>
+                                <th class="px-6 py-3 text-right">Año Actual</th>
+                                <th class="px-6 py-3 text-right">Diferencia</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cr-table-body" class="divide-y divide-slate-700">
+                            <!-- Rows -->
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- 2. Modal Gestión de Vendedores -->
+        <div id="modal-seller-report"
+            class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center z-50">
+            <div
+                class="glass-panel p-8 rounded-2xl w-full max-w-6xl mx-4 border border-orange-900/50 shadow-2xl max-h-[95vh] overflow-y-auto">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-bold text-orange-400 flex items-center gap-2">
+                        <span>💼</span> Gestión de Vendedores
+                    </h3>
+                    <div class="flex gap-4">
+                        <button id="back-seller-list-btn"
+                            class="hidden text-sm text-blue-400 hover:text-blue-300 underline">← Volver a Lista</button>
+                        <button id="close-seller-report-btn" class="text-slate-400 hover:text-white">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- View 1: List -->
+                <div id="sr-list-view">
+                    <div id="sr-grid" class="grid grid-cols-1 md:grid-cols-3 gap-6"></div>
+                </div>
+
+                <!-- View 2: Detail -->
+                <div id="sr-detail-view" class="hidden space-y-8">
+                    <h4 class="text-2xl font-bold text-white text-center mb-4">Resultados de <span id="sr-seller-name"
+                            class="text-orange-400"></span></h4>
+
+                    <!-- KPIs -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="glass-panel p-6 rounded-2xl border-l-4 border-slate-500">
+                            <p class="text-slate-400 text-sm">Meta Total Anual</p>
+                            <p class="text-2xl font-bold text-white mt-1" id="sr-meta-total">S/ 0.00</p>
+                        </div>
+                        <div class="glass-panel p-6 rounded-2xl border-l-4 border-orange-500">
+                            <p class="text-slate-400 text-sm">Venta Realizada</p>
+                            <p class="text-2xl font-bold text-white mt-1" id="sr-sale-total">S/ 0.00</p>
+                        </div>
+                        <div class="glass-panel p-6 rounded-2xl border-l-4 border-blue-500">
+                            <p class="text-slate-400 text-sm">% Cumplimiento</p>
+                            <p class="text-2xl font-bold text-white mt-1" id="sr-compliance">0%</p>
+                        </div>
+                    </div>
+
+                    <!-- Chart -->
+                    <div class="glass-panel p-6 rounded-2xl">
+                        <div class="relative h-80 w-full">
+                            <canvas id="sellerChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Table -->
+                    <div class="glass-panel rounded-2xl overflow-hidden">
+                        <table class="w-full text-left text-sm text-slate-300">
+                            <thead class="bg-slate-800 text-xs uppercase text-slate-400">
+                                <tr>
+                                    <th class="px-6 py-3">Mes</th>
+                                    <th class="px-6 py-3 text-right">Meta (Cuota)</th>
+                                    <th class="px-6 py-3 text-right">Venta Real</th>
+                                    <th class="px-6 py-3 text-right">Cumplimiento</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sr-table-body" class="divide-y divide-slate-700"></tbody>
+                        </table>
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+
+        <!-- 3. Modal Análisis de Productos -->
+        <div id="modal-product-report"
+            class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center z-50">
+            <div
+                class="glass-panel p-8 rounded-2xl w-full max-w-5xl mx-4 border border-pink-900/50 shadow-2xl max-h-[95vh] overflow-y-auto">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-bold text-pink-400 flex items-center gap-2">
+                        <span>📦</span> Análisis de Productos
+                    </h3>
+                    <button id="close-product-report-btn" class="text-slate-400 hover:text-white">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Top 10 Chart -->
+                <div class="glass-panel p-6 rounded-2xl mb-8">
+                    <h3 class="text-lg font-semibold text-white mb-4">Top 10 Productos Más Vendidos</h3>
+                    <div class="relative h-80 w-full">
+                        <canvas id="productChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Full List -->
+                <div class="glass-panel rounded-2xl overflow-hidden">
+                    <div class="p-4 border-b border-slate-700">
+                        <h4 class="text-white font-semibold">Ranking de Productos (De mayor a menor)</h4>
+                    </div>
+                    <div class="overflow-x-auto max-h-96">
+                        <table class="w-full text-left text-sm text-slate-300">
+                            <thead class="bg-slate-800 text-xs uppercase text-slate-400 sticky top-0">
+                                <tr>
+                                    <th class="px-6 py-3">#</th>
+                                    <th class="px-6 py-3">Producto</th>
+                                    <th class="px-6 py-3 text-right">Total Vendido</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pr-table-body" class="divide-y divide-slate-700">
+                                <!-- Rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Application Logic -->
+    <script src="app.js"></script>
+</body>
+
+</html>
